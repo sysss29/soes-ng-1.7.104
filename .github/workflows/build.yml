@@ -119,8 +119,11 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          git clone https://github.com/nikitalita/Caprica.git caprica
-          git -C caprica checkout $env:CAPRICA_COMMIT
+          git -c core.autocrlf=false clone https://github.com/nikitalita/Caprica.git caprica
+          git -c core.autocrlf=false -C caprica checkout $env:CAPRICA_COMMIT
+          # Skyrim allows global Native functions in scripts not marked Native (SKSE relies on it).
+          git -C caprica apply --verbose ../wrapper/papyrus/caprica-skyrim-native.patch
+          if ($LASTEXITCODE -ne 0) { throw "Caprica patch failed" }
           # Caprica pins a 2023 vcpkg baseline whose Boost no longer builds with current MSVC;
           # use the same (newer) baseline as the DLL build instead.
           $manifest = Get-Content caprica/vcpkg.json -Raw | ConvertFrom-Json

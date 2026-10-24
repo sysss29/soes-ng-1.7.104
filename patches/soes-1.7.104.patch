@@ -1,0 +1,143 @@
+diff --git a/include/Utility.h b/include/Utility.h
+index ee0e5f5..133067c 100644
+--- a/include/Utility.h
++++ b/include/Utility.h
+@@ -16,6 +16,7 @@ namespace SettingsDefaults {
+     static constexpr int32_t MenuPaginationCount = 1000;
+     static constexpr int32_t PollingMS = 2000;
+     static constexpr bool AllowExternalEquipment = false;
++    static constexpr bool ForceEquipHookOn17 = false;
+ }
+ 
+ namespace UserTextInputJSON {
+@@ -40,6 +41,7 @@ public:
+     static int32_t MenuPaginationCount();
+     static int32_t PollingMSInterval();
+     static bool AllowExternalEquipment();
++    static bool ForceEquipHookOn17();
+ };
+ 
+ namespace ProtoUtils {
+diff --git a/include/version.h b/include/version.h
+index bc33b33..f935dcd 100644
+--- a/include/version.h
++++ b/include/version.h
+@@ -6,7 +6,7 @@
+ 
+ #define SKYRIMOUTFITEQUIPMENTSYSTEMNG_VERSION_MAJOR 0
+ #define SKYRIMOUTFITEQUIPMENTSYSTEMNG_VERSION_MINOR 1
+-#define SKYRIMOUTFITEQUIPMENTSYSTEMNG_VERSION_PATCH 4
++#define SKYRIMOUTFITEQUIPMENTSYSTEMNG_VERSION_PATCH 5
+ #define SKYRIMOUTFITEQUIPMENTSYSTEMNG_VERSION_BETA 0
+ #define SKYRIMOUTFITEQUIPMENTSYSTEMNG_VERSION_VERSTRING SKYRIMOUTFITEQUIPMENTSYSTEMNG_MAKE_STR(SKYRIMOUTFITEQUIPMENTSYSTEMNG_VERSION_MAJOR) "." SKYRIMOUTFITEQUIPMENTSYSTEMNG_MAKE_STR(SKYRIMOUTFITEQUIPMENTSYSTEMNG_VERSION_MINOR) "." SKYRIMOUTFITEQUIPMENTSYSTEMNG_MAKE_STR(SKYRIMOUTFITEQUIPMENTSYSTEMNG_VERSION_PATCH) "." SKYRIMOUTFITEQUIPMENTSYSTEMNG_MAKE_STR(SKYRIMOUTFITEQUIPMENTSYSTEMNG_VERSION_BETA)
+ 
+diff --git a/src/Main.cpp b/src/Main.cpp
+index 70d8fb9..1684b0c 100644
+--- a/src/Main.cpp
++++ b/src/Main.cpp
+@@ -91,10 +91,24 @@ void Callback_Messaging_SKSE(SKSE::MessagingInterface::Message* message) {
+     if (message->type == SKSE::MessagingInterface::kPostLoad) {
+         // Install hooks
+ 
+-        if (!Settings::AllowExternalEquipment()) {
+-            Hooking::install_hook<OutfitSystem::EquipObject>();
+-        } else {
++        // 1.7.104 rebuild: the EquipObject hook writes a CALL at a fixed offset inside
++        // ActorEquipManager::EquipObject. That offset (0x170 on AE) was verified up to 1.6.1170
++        // but not for the 1.7.x runtimes, where Bethesda recompiled the executable. Patching a
++        // wrong site can crash the game, so on 1.7.99+ the hook is skipped unless explicitly
++        // forced. The hook only enforces outfits on tracked NPCs (it never affects the player),
++        // so skipping it only means other mods may equip extra items on tracked NPCs.
++        const auto gameVersion = REL::Module::get().version();
++        const bool isAE17Plus = !REL::Module::IsVR() && gameVersion >= REL::Version(1, 7, 99, 0);
++
++        if (Settings::AllowExternalEquipment()) {
+             LOG(info, "Allowing external equipment.");
++        } else if (isAE17Plus && !Settings::ForceEquipHookOn17()) {
++            FORCELOG(warn, "Skyrim {}: EquipObject hook not verified for 1.7.x, skipped. "
++                           "Outfits still work; NPC equip-locking is off. "
++                           "Set [Gameplay] ForceEquipHookOn17=true in the INI to try it anyway.",
++                     gameVersion.string());
++        } else {
++            Hooking::install_hook<OutfitSystem::EquipObject>();
+         }
+ 
+     } else if (message->type == SKSE::MessagingInterface::kPostPostLoad) {
+diff --git a/src/Utility.cpp b/src/Utility.cpp
+index 7e0231a..c68b9b0 100644
+--- a/src/Utility.cpp
++++ b/src/Utility.cpp
+@@ -195,6 +195,18 @@ bool Settings::AllowExternalEquipment() {
+     return result.has_value() ? result.value() : SettingsDefaults::AllowExternalEquipment;
+ }
+ 
++bool Settings::ForceEquipHookOn17() {
++    static std::optional<bool> result;
++
++    if (!result.has_value()) {
++        // Independent of logging: this is a safety switch, not a debug option.
++        result = Instance()->GetBoolean("Gameplay", "ForceEquipHookOn17", SettingsDefaults::ForceEquipHookOn17);
++        EXTRALOG(info, "ForceEquipHookOn17 set as {}", result.value());
++    }
++
++    return result.has_value() ? result.value() : SettingsDefaults::ForceEquipHookOn17;
++}
++
+ void REUtilities::DebugNotification(const std::string& notification) {
+     RE::DebugNotification(notification.c_str());
+ }
+diff --git a/vcpkg.json b/vcpkg.json
+index 5ed0f19..5a4159c 100644
+--- a/vcpkg.json
++++ b/vcpkg.json
+@@ -27,14 +27,46 @@
+       "description": "Build the SKSE plugin.",
+       "dependencies": [
+         "span-lite",
+-        "spdlog",
+         "inih",
+         "protobuf",
+         "boost-stl-interfaces",
+         "rsm-binary-io",
+-        "xbyak",
+-        "directxtk",
+-        "rapidcsv"
++        {
++          "name": "directxmath",
++          "version>=": "2025-04-03"
++        },
++        {
++          "name": "directxtk",
++          "version>=": "2025-10-27"
++        },
++        {
++          "name": "fmt",
++          "version>=": "12.1.0"
++        },
++        {
++          "name": "nlohmann-json",
++          "version>=": "3.12.0"
++        },
++        {
++          "name": "rapidcsv",
++          "version>=": "8.90"
++        },
++        {
++          "name": "simpleini",
++          "version>=": "4.25"
++        },
++        {
++          "name": "spdlog",
++          "version>=": "1.16.0"
++        },
++        {
++          "name": "toml11",
++          "version>=": "4.4.0"
++        },
++        {
++          "name": "xbyak",
++          "version>=": "7.28"
++        }
+       ]
+     },
+     "tests": {

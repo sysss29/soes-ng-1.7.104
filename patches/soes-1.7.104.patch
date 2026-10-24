@@ -1,3 +1,295 @@
+diff --git a/contrib/Distribution/PapyrusSources/skyoutequsysmcm.psc b/contrib/Distribution/PapyrusSources/skyoutequsysmcm.psc
+index d921b8c..c47ab58 100644
+--- a/contrib/Distribution/PapyrusSources/skyoutequsysmcm.psc
++++ b/contrib/Distribution/PapyrusSources/skyoutequsysmcm.psc
+@@ -15,6 +15,7 @@ String   _sOutfitShowingContextMenu = ""
+ Int      _iOutfitEditorBodySlotPage = 0
+ 
+ String[] _sOutfitSlotNames
++Int[]    _iOutfitSlotIndices
+ String[] _sOutfitSlotArmors
+ Armor[]  _kOutfitSlotArmors
+ Armor[]  _kOutfitContents
+@@ -266,6 +267,7 @@ Function SetupSlotDataForOutfit(String asOutfitName)
+    ;
+    SkyrimOutfitEquipmentSystemNativeFuncs.PrepOutfitBodySlotListing(asOutfitName)
+    Int[] iSlots = SkyrimOutfitEquipmentSystemNativeFuncs.GetOutfitBodySlotListingSlotIndices()
++   _iOutfitSlotIndices = iSlots
+    _sOutfitSlotNames = Utility.CreateStringArray(iSlots.Length)
+    Int iIterator = 0
+    While iIterator < iSlots.Length
+@@ -287,7 +289,7 @@ EndFunction
+          Return
+       EndIf
+       If StringUtil.Substring(sState, 0, 22) == "OutfitEditor_BodySlot_"
+-         Int iEntryIndex = (_iOutfitEditorBodySlotPage*8) + (StringUtil.Substring(sState, 22) as Int)
++         Int iEntryIndex = StringUtil.Substring(sState, 22) as Int
+          String sArmorName = _sOutfitSlotArmors[iEntryIndex]
+          Armor  kArmorForm = _kOutfitSlotArmors[iEntryIndex]
+          Bool bDelete = ShowMessage("$SkyOutEquSys_Confirm_RemoveArmor_Text{" + sArmorName + "}", True, "$SkyOutEquSys_Confirm_RemoveArmor_Yes", "$SkyOutEquSys_Confirm_RemoveArmor_No")
+@@ -1654,56 +1656,33 @@ EndFunction
+          ;       listing the outfit contents was designed at that 
+          ;       stage of development.)
+          ;
+-         Int iSlotCount = _sOutfitSlotNames.Length
+-         If iSlotCount > 11
+-            Int iPageCount = iSlotCount / 8
+-            If iPageCount * 8 < iSlotCount
+-               iPageCount = iPageCount + 1
+-            EndIf
+-            If _iOutfitEditorBodySlotPage >= iPageCount
+-               _iOutfitEditorBodySlotPage = iPageCount - 1
+-            EndIf
+-            Int iOffset    = _iOutfitEditorBodySlotPage * 8
+-            Int iIterator  = 0
+-            Int iMax       = iSlotCount - iOffset
+-            If iMax > 8 ; (visible - 3) -- make room for page separator and buttons
+-               iMax = 8
+-            EndIf
+-            While iIterator < iMax
+-               String sSlot  = _sOutfitSlotNames [iIterator + iOffset]
+-               String sArmor = _sOutfitSlotArmors[iIterator + iOffset]
+-               If !sArmor
+-                  sArmor = "$SkyOutEquSys_NamelessArmor"
++         ; 1.7.104 rebuild: list every body slot (30-61) on one scrolling page, in slot order.
++         ; Filled slots are clickable (remove armor); empty slots are shown greyed out.
++         ; A slot covered by several armors is listed once per armor.
++         Int iEntryCount = _sOutfitSlotNames.Length
++         If _iOutfitSlotIndices.Length < iEntryCount
++            iEntryCount = _iOutfitSlotIndices.Length
++         EndIf
++         Int iSlot = 30
++         While iSlot <= 61
++            Bool bFilled = False
++            Int iEntry = 0
++            While iEntry < iEntryCount
++               If _iOutfitSlotIndices[iEntry] == iSlot
++                  String sArmor = _sOutfitSlotArmors[iEntry]
++                  If !sArmor
++                     sArmor = "$SkyOutEquSys_NamelessArmor"
++                  EndIf
++                  AddTextOptionST("OutfitEditor_BodySlot_" + iEntry, _sOutfitSlotNames[iEntry], sArmor)
++                  bFilled = True
+                EndIf
+-               AddTextOptionST("OutfitEditor_BodySlot_" + iIterator, sSlot, sArmor)
+-               iIterator = iIterator + 1
++               iEntry = iEntry + 1
+             EndWhile
+-            Int iFlagsPrev = OPTION_FLAG_NONE
+-            Int iFlagsNext = OPTION_FLAG_NONE
+-            If _iOutfitEditorBodySlotPage < 1
+-               iFlagsPrev = OPTION_FLAG_DISABLED
+-            EndIf
+-            If _iOutfitEditorBodySlotPage == iPageCount - 1
+-               iFlagsNext = OPTION_FLAG_DISABLED
++            If !bFilled
++               AddTextOption(BodySlotName(iSlot), "$SkyOutEquSys_EmptySlot", OPTION_FLAG_DISABLED)
+             EndIf
+-            SetCursorPosition(19)
+-            AddHeaderOption("")
+-            AddTextOptionST("OutfitEditor_BodySlotsPrev", "$SkyOutEquSys_MCMText_OutfitSlotsPageNumber{" + (_iOutfitEditorBodySlotPage + 1) + "}{" + iPageCount + "}", "$SkyOutEquSys_MCMText_OutfitSlotsButtonPagePrev", iFlagsPrev)
+-            AddTextOptionST("OutfitEditor_BodySlotsNext", "", "$SkyOutEquSys_MCMText_OutfitSlotsButtonPageNext", iFlagsNext)
+-         ElseIf iSlotCount
+-            Int iIterator = 0
+-            While iIterator < iSlotCount
+-               String sSlot  = _sOutfitSlotNames[iIterator]
+-               String sArmor = _sOutfitSlotArmors[iIterator]
+-               If !sArmor
+-                  sArmor = "$SkyOutEquSys_NamelessArmor"
+-               EndIf
+-               AddTextOptionST("OutfitEditor_BodySlot_" + iIterator, sSlot, sArmor)
+-               iIterator = iIterator + 1
+-            EndWhile
+-         Else
+-            AddTextOption("$SkyOutEquSys_OutfitEditor_OutfitIsEmpty", "")
+-         EndIf
++            iSlot = iSlot + 1
++         EndWhile
+       ;/EndBlock/;
+       EndFunction
+       Function AddArmorToOutfit(Armor kAdd)
+diff --git a/contrib/Distribution/PapyrusSources/skyoutequsysquicksloteffect.psc b/contrib/Distribution/PapyrusSources/skyoutequsysquicksloteffect.psc
+index 4dc5118..8c903eb 100644
+--- a/contrib/Distribution/PapyrusSources/skyoutequsysquicksloteffect.psc
++++ b/contrib/Distribution/PapyrusSources/skyoutequsysquicksloteffect.psc
+@@ -1,5 +1,36 @@
+ Scriptname SkyOutEquSysQuickslotEffect extends activemagiceffect
+ 
++; Quick-slot outfit picker.
++;
++; Favourite outfits can be grouped into categories by naming them with "/" as a separator:
++;   "Leather/Ranger"          -> category "Leather", entry "Ranger"
++;   "Armor/Heavy/Steel Plate" -> "Armor" > "Heavy" > "Steel Plate"
++; Outfits without "/" are listed at the top level, after the categories.
++; Categories are matched ignoring capitalisation (a Papyrus property), so "leather/x" and
++; "Leather/y" end up in the same category. Nesting is capped at MaxDepth() levels; any deeper
++; separators stay part of the entry label.
++
++Int Function MaxDepth()
++   Return 4
++EndFunction
++
++; Strips leading/trailing spaces so "Leather / Ranger" works like "Leather/Ranger".
++String Function Trim(String s)
++   Int iLen = StringUtil.GetLength(s)
++   Int iStart = 0
++   While iStart < iLen && StringUtil.GetNthChar(s, iStart) == " "
++      iStart += 1
++   EndWhile
++   Int iEnd = iLen
++   While iEnd > iStart && StringUtil.GetNthChar(s, iEnd - 1) == " "
++      iEnd -= 1
++   EndWhile
++   If iEnd <= iStart
++      Return ""
++   EndIf
++   Return StringUtil.Substring(s, iStart, iEnd - iStart)
++EndFunction
++
+ Event OnEffectStart(Actor akCaster, Actor akTarget)
+    bool isPCTracked = SkyrimOutfitEquipmentSystemNativeFuncs.HasActor(Game.GetPlayer())
+ 
+@@ -8,22 +39,130 @@ Event OnEffectStart(Actor akCaster, Actor akTarget)
+       return
+    EndIF
+ 
+-   String[] sLMenuItems = SkyrimOutfitEquipmentSystemNativeFuncs.ListOutfits(favoritesOnly = true)
+-   sLMenuItems = SkyrimOutfitEquipmentSystemNativeFuncs.NaturalSort_ASCII(sLMenuItems)
++   String[] sOutfits = SkyrimOutfitEquipmentSystemNativeFuncs.ListOutfits(favoritesOnly = true)
++   sOutfits = SkyrimOutfitEquipmentSystemNativeFuncs.NaturalSort_ASCII(sOutfits)
++   Int iOutfitCount = sOutfits.Length
++
+    UIListMenu menu = UIExtensions.GetMenu("UIListMenu") as UIListMenu
+-   Int iIndex = 0
++
++   ; Entries are numbered in the order they are added (0, 1, 2, ...). For every entry we keep its
++   ; label and the full outfit name it stands for ("" for the fixed entries and for categories),
++   ; so a selection resolves to the right outfit even when two categories hold the same label.
++   Int iCapacity = 2 + iOutfitCount * (MaxDepth() + 1)
++   String[] sEntryOutfit = Utility.CreateStringArray(iCapacity)
++   String[] sEntryLabel = Utility.CreateStringArray(iCapacity)
++   String[] sCategoryPath = Utility.CreateStringArray(iCapacity)
++   Int[] iCategoryEntry = Utility.CreateIntArray(iCapacity, -1)
++   Int iCategoryCount = 0
++   Int iEntryCount = 0
++
+    menu.AddEntryItem("[DISMISS]")
++   sEntryLabel[iEntryCount] = "[DISMISS]"
++   iEntryCount += 1
+    menu.AddEntryItem("[NO OUTFIT]")
+-   While iIndex < sLMenuItems.Length
+-      menu.AddEntryItem(sLMenuItems[iIndex])
+-      iIndex = iIndex + 1
++   sEntryLabel[iEntryCount] = "[NO OUTFIT]"
++   iEntryCount += 1
++
++   ; Pass 1: create the category tree, so categories come before loose outfits.
++   Int iOutfit = 0
++   While iOutfit < iOutfitCount
++      String[] sParts = StringUtil.Split(sOutfits[iOutfit], "/")
++      Int iDepth = sParts.Length - 1
++      If iDepth > MaxDepth()
++         iDepth = MaxDepth()
++      EndIf
++      String sPath = ""
++      Int iParentEntry = -1
++      Int iLevel = 0
++      While iLevel < iDepth
++         String sName = Trim(sParts[iLevel])
++         If sName != ""
++            sPath = sPath + "/" + sName
++            Int iFound = sCategoryPath.Find(sPath)
++            If iFound < 0 || iFound >= iCategoryCount
++               String sCategoryLabel = sName + "  >"
++               menu.AddEntryItem(sCategoryLabel, iParentEntry, -1, true)
++               sEntryLabel[iEntryCount] = sCategoryLabel
++               sCategoryPath[iCategoryCount] = sPath
++               iCategoryEntry[iCategoryCount] = iEntryCount
++               iFound = iCategoryCount
++               iCategoryCount += 1
++               iEntryCount += 1
++            EndIf
++            iParentEntry = iCategoryEntry[iFound]
++         EndIf
++         iLevel += 1
++      EndWhile
++      iOutfit += 1
+    EndWhile
++
++   ; Pass 2: add each outfit under its category (or at the top level).
++   iOutfit = 0
++   While iOutfit < iOutfitCount
++      String sFull = sOutfits[iOutfit]
++      String[] sParts = StringUtil.Split(sFull, "/")
++      Int iDepth = sParts.Length - 1
++      If iDepth > MaxDepth()
++         iDepth = MaxDepth()
++      EndIf
++      String sPath = ""
++      Int iLevel = 0
++      While iLevel < iDepth
++         String sName = Trim(sParts[iLevel])
++         If sName != ""
++            sPath = sPath + "/" + sName
++         EndIf
++         iLevel += 1
++      EndWhile
++      ; Label: everything after the last category level (re-joined if nesting was capped).
++      String sLabel = ""
++      While iLevel < sParts.Length
++         If sLabel != ""
++            sLabel = sLabel + "/"
++         EndIf
++         sLabel = sLabel + Trim(sParts[iLevel])
++         iLevel += 1
++      EndWhile
++      If sLabel == ""
++         sLabel = sFull
++      EndIf
++      Int iParentEntry = -1
++      If sPath != ""
++         Int iFound = sCategoryPath.Find(sPath)
++         If iFound >= 0 && iFound < iCategoryCount
++            iParentEntry = iCategoryEntry[iFound]
++         EndIf
++      EndIf
++      menu.AddEntryItem(sLabel, iParentEntry, -1, false)
++      sEntryLabel[iEntryCount] = sLabel
++      sEntryOutfit[iEntryCount] = sFull
++      iEntryCount += 1
++      iOutfit += 1
++   EndWhile
++
+    UIExtensions.OpenMenu("UIListMenu")
+-   String result = menu.GetResultString()
++   Int iSelected = menu.GetResultInt()
++   String sSelectedLabel = menu.GetResultString()
++
++   ; Prefer the selected index; if it does not match the selected label (or is out of range),
++   ; fall back to the first entry with that label.
++   If iSelected < 0 || iSelected >= iEntryCount || (sSelectedLabel != "" && sEntryLabel[iSelected] != sSelectedLabel)
++      iSelected = -1
++      If sSelectedLabel != ""
++         Int iSearch = sEntryLabel.Find(sSelectedLabel)
++         If iSearch >= 0 && iSearch < iEntryCount
++            iSelected = iSearch
++         EndIf
++      EndIf
++   EndIf
++
++   String result = "[DISMISS]"
++   If iSelected == 1
++      result = "[NO OUTFIT]"
++   ElseIf iSelected >= 2 && sEntryOutfit[iSelected] != ""
++      result = sEntryOutfit[iSelected]
++   EndIf
+    Debug.Trace("User selected outfit: " + result)
+-   If result == "" ; Cover the case where the user backs out of the menu
+-      result = "[DISMISS]"
+-   Endif
+    If result == "[NO OUTFIT]"
+       result = ""
+    Endif
 diff --git a/include/Utility.h b/include/Utility.h
 index ee0e5f5..133067c 100644
 --- a/include/Utility.h

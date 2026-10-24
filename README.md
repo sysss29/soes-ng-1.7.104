@@ -21,7 +21,13 @@ Skyrim 1.7.99 / 1.7.104 instead of failing with
   ForceEquipHookOn17=true
   ```
 
-- Plugin version 0.1.5. No changes to the ESP or Papyrus scripts.
+- Mod and outfit name lookups are case-insensitive (Papyrus hands names back with altered
+  capitalisation, which made "Import from Mod" return nothing for mixed-case plugin names).
+- Body-slot labels show their slot number, e.g. `[32] Body` (English translation file).
+- Papyrus scripts are compiled in CI with [Caprica](https://github.com/nikitalita/Caprica)
+  against public script headers; no Creation Kit needed. The package ships the compiled
+  `Scripts/*.pex` it changes and the patched `Interface/Translations` file.
+- Plugin version 0.1.5. No changes to the ESP.
 
 ## Install (MO2)
 

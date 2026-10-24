@@ -15,6 +15,10 @@ env:
   COMMONLIB_TAG: v12.1.0
   # vcpkg tool/scripts version: the baseline CommonLibSSE-NG v12.1.0 itself builds with.
   VCPKG_COMMIT: ee12231b20c95013c6638d845d04c91559a1d1ff
+  # Papyrus toolchain (compile-time only)
+  CAPRICA_COMMIT: 9cd6d32ec2750adae329e81f7276dac95251e000
+  NL_ONLINE_COMMIT: 579cec203d4dcd093f6f01a6cb1d0851a5194a9a
+  GRIMY_COMMIT: 4ba71332b4851985240f582a76017216a3bd452f
 
 jobs:
   build:
@@ -106,6 +110,69 @@ jobs:
           cd soes
           cmake --build --preset release-msvc
           if ($LASTEXITCODE -ne 0) { throw "Build failed" }
+
+      # ---------------------------------------------------------------------------------------
+      # Papyrus scripts: compiled with Caprica (open-source, MIT) against public script headers,
+      # so no Creation Kit is needed. Headers are used for compiling only and never shipped.
+      # ---------------------------------------------------------------------------------------
+      - name: Build Caprica (Papyrus compiler)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git clone https://github.com/nikitalita/Caprica.git caprica
+          git -C caprica checkout $env:CAPRICA_COMMIT
+          cmake -S caprica -B caprica/build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows-static `
+            -DCAPRICA_USE_STATIC_RUNTIME=ON
+          if ($LASTEXITCODE -ne 0) { throw "Caprica configure failed" }
+          cmake --build caprica/build
+          if ($LASTEXITCODE -ne 0) { throw "Caprica build failed" }
+          $exe = Get-ChildItem -Recurse -Path caprica/build -Filter Caprica.exe | Select-Object -First 1
+          if (-not $exe) { throw "Caprica.exe not found" }
+          "CAPRICA_EXE=$($exe.FullName)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      - name: Fetch Papyrus headers (Skyrim, SKSE, SkyUI, UIExtensions)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git clone --filter=blob:none --sparse https://github.com/MrOctopus/nl_online.git nl_online
+          git -C nl_online checkout $env:NL_ONLINE_COMMIT
+          git -C nl_online sparse-checkout set sse/source skse64/source skyui/source
+          git clone --filter=blob:none https://github.com/Rukan/Grimy-Skyrim-Papyrus-Source.git grimy
+          git -C grimy checkout $env:GRIMY_COMMIT
+          New-Item -ItemType Directory -Force -Path papyrus-headers/uiextensions | Out-Null
+          Copy-Item grimy/uiextensions.psc, grimy/uimenubase.psc papyrus-headers/uiextensions/
+          Copy-Item wrapper/papyrus/headers/*.psc papyrus-headers/uiextensions/
+
+      - name: Compile Papyrus scripts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $src = (Resolve-Path soes/contrib/Distribution/PapyrusSources).Path
+          $out = New-Item -ItemType Directory -Force -Path package/Scripts
+          $flags = (Resolve-Path nl_online/sse/source/TESV_Papyrus_Flags.flg).Path
+          $scripts = @("skyoutequsysquicksloteffect.psc", "skyoutequsysmcm.psc") | ForEach-Object { Join-Path $src $_ }
+          & $env:CAPRICA_EXE --game skyrim -f $flags `
+            -i $src `
+            -i (Resolve-Path papyrus-headers/uiextensions).Path `
+            -i (Resolve-Path nl_online/skyui/source).Path `
+            -i (Resolve-Path nl_online/skse64/source).Path `
+            -i (Resolve-Path nl_online/sse/source).Path `
+            -o $out.FullName --release --final @scripts
+          if ($LASTEXITCODE -ne 0) { throw "Papyrus compile failed" }
+          Get-ChildItem package/Scripts | ForEach-Object { "$($_.Name)  $($_.Length) bytes" }
+
+      - name: Translations (body-slot numbers)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dst = New-Item -ItemType Directory -Force -Path package/Interface/Translations
+          python wrapper/tools/translations.py `
+            soes/contrib/Distribution/Translations/interface/translations/skyrimoutfitequipmentsystemng_english.txt `
+            (Join-Path $dst.FullName skyrimoutfitequipmentsystemng_english.txt)
+          if ($LASTEXITCODE -ne 0) { throw "Translation rewrite failed" }
 
       - name: Package as a mod (SKSE/Plugins/...)
         shell: pwsh

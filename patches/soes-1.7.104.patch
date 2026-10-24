@@ -82,7 +82,7 @@ index 70d8fb9..1684b0c 100644
  
      } else if (message->type == SKSE::MessagingInterface::kPostPostLoad) {
 diff --git a/src/OutfitSystem.cpp b/src/OutfitSystem.cpp
-index 17c05ca..bac37c3 100644
+index 17c05ca..4513932 100644
 --- a/src/OutfitSystem.cpp
 +++ b/src/OutfitSystem.cpp
 @@ -463,7 +463,7 @@ namespace OutfitSystem {
@@ -94,7 +94,57 @@ index 17c05ca..bac37c3 100644
                              data.bodySlots.push_back(i);
                              data.armors.push_back(armor);
                              {// name
-@@ -1127,7 +1127,7 @@ namespace OutfitSystem {
+@@ -733,6 +733,27 @@ namespace OutfitSystem {
+         return service.enabled;
+     }
+ 
++    // Papyrus interns strings case-insensitively, so a mod or record name sent back from the
++    // MCM can arrive with different capitalisation (e.g. "hdm_brutalravager.esp" for
++    // "HDM_BrutalRavager.esp"). Mod and outfit lookups therefore ignore case.
++    struct CaseInsensitiveHash {
++        std::size_t operator()(const std::string& a_str) const noexcept {
++            std::size_t hash = 14695981039346656037ull;  // FNV-1a over lowercased bytes
++            for (unsigned char c : a_str) {
++                hash ^= static_cast<std::size_t>(std::tolower(c));
++                hash *= 1099511628211ull;
++            }
++            return hash;
++        }
++    };
++    struct CaseInsensitiveEqual {
++        bool operator()(const std::string& a_lhs, const std::string& a_rhs) const noexcept {
++            return a_lhs.size() == a_rhs.size() && _stricmp(a_lhs.c_str(), a_rhs.c_str()) == 0;
++        }
++    };
++    template <class V>
++    using CaseInsensitiveMap = std::unordered_map<std::string, V, CaseInsensitiveHash, CaseInsensitiveEqual>;
++
+     bool IsExcludedPlugin(const std::string_view& filename) {
+         // List of default Bethesda plugins
+         static const std::vector<std::string_view> excludedPlugins = {
+@@ -762,7 +783,7 @@ namespace OutfitSystem {
+             std::unordered_map<std::string, RE::TESObjectARMO*> armorsMap;
+         };
+ 
+-        std::unordered_map<std::string, ModEntryInfo> g_cachedModMap;
++        CaseInsensitiveMap<ModEntryInfo> g_cachedModMap;
+         std::vector<std::string> g_cachedModList;
+         bool g_isModListCached = false;
+ 
+@@ -841,10 +862,10 @@ namespace OutfitSystem {
+             std::string filename;
+             uint32_t loadOrderIndex;
+             const RE::TESFile* filePtr; // Add file pointer
+-            std::unordered_map<std::string, RE::BGSOutfit*> outfitsMap;
++            CaseInsensitiveMap<RE::BGSOutfit*> outfitsMap;
+         };
+ 
+-        std::unordered_map<std::string, ModEntryInfo> g_cachedModMap;
++        CaseInsensitiveMap<ModEntryInfo> g_cachedModMap;
+         std::vector<std::string> g_cachedModList;
+         bool g_isModListCached = false;
+ 
+@@ -1127,7 +1148,7 @@ namespace OutfitSystem {
                  RE::TESObjectARMO* existing = *it;
                  if (existing) {
                      const auto mask = existing->GetSlotMask();
@@ -103,6 +153,15 @@ index 17c05ca..bac37c3 100644
                          != static_cast<uint32_t>(RE::BGSBipedObjectForm::FirstPersonFlag::kNone))
                          conflicts.push_back(existing);
                  }
+@@ -1277,7 +1298,7 @@ namespace OutfitSystem {
+             }
+         }
+ 
+-        unordered_map<string, RE::BGSOutfit*> outfitMap = modIt->second.outfitsMap;
++        auto outfitMap = modIt->second.outfitsMap;
+         uint32_t addedCount = 0;
+ 
+         // Iterate through all outfits in the mod
 diff --git a/src/Utility.cpp b/src/Utility.cpp
 index 7e0231a..2100b68 100644
 --- a/src/Utility.cpp

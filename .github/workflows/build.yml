@@ -148,9 +148,15 @@ jobs:
           git -C nl_online sparse-checkout set sse/source skse64/source skyui/source
           git clone --filter=blob:none https://github.com/Rukan/Grimy-Skyrim-Papyrus-Source.git grimy
           git -C grimy checkout $env:GRIMY_COMMIT
-          New-Item -ItemType Directory -Force -Path papyrus-headers/uiextensions | Out-Null
-          Copy-Item grimy/uiextensions.psc, grimy/uimenubase.psc papyrus-headers/uiextensions/
-          Copy-Item wrapper/papyrus/headers/*.psc papyrus-headers/uiextensions/
+          # Caprica rejects duplicate script names across import folders, so merge everything into
+          # one folder. Order matters: SKSE's headers are supersets of the vanilla ones and win.
+          $h = New-Item -ItemType Directory -Force -Path papyrus-headers/all
+          Copy-Item nl_online/sse/source/* $h -Force
+          Copy-Item nl_online/skse64/source/* $h -Force
+          Copy-Item nl_online/skyui/source/*.psc $h -Force
+          Copy-Item grimy/uiextensions.psc, grimy/uimenubase.psc $h -Force
+          Copy-Item wrapper/papyrus/headers/*.psc $h -Force
+          "$((Get-ChildItem $h -Filter *.psc).Count) header scripts" 
 
       - name: Compile Papyrus scripts
         shell: pwsh
@@ -158,14 +164,11 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $src = (Resolve-Path soes/contrib/Distribution/PapyrusSources).Path
           $out = New-Item -ItemType Directory -Force -Path package/Scripts
-          $flags = (Resolve-Path nl_online/sse/source/TESV_Papyrus_Flags.flg).Path
+          $flags = (Resolve-Path papyrus-headers/all/TESV_Papyrus_Flags.flg).Path
           $scripts = @("skyoutequsysquicksloteffect.psc", "skyoutequsysmcm.psc") | ForEach-Object { Join-Path $src $_ }
           & $env:CAPRICA_EXE --game skyrim -f $flags `
             -i $src `
-            -i (Resolve-Path papyrus-headers/uiextensions).Path `
-            -i (Resolve-Path nl_online/skyui/source).Path `
-            -i (Resolve-Path nl_online/skse64/source).Path `
-            -i (Resolve-Path nl_online/sse/source).Path `
+            -i (Resolve-Path papyrus-headers/all).Path `
             -o $out.FullName --release --final @scripts
           if ($LASTEXITCODE -ne 0) { throw "Papyrus compile failed" }
           Get-ChildItem package/Scripts | ForEach-Object { "$($_.Name)  $($_.Length) bytes" }

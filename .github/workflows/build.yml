@@ -121,10 +121,16 @@ jobs:
           $ErrorActionPreference = 'Stop'
           git clone https://github.com/nikitalita/Caprica.git caprica
           git -C caprica checkout $env:CAPRICA_COMMIT
+          # Caprica pins a 2023 vcpkg baseline whose Boost no longer builds with current MSVC;
+          # use the same (newer) baseline as the DLL build instead.
+          $manifest = Get-Content caprica/vcpkg.json -Raw | ConvertFrom-Json
+          $manifest.'builtin-baseline' = $env:VCPKG_COMMIT
+          $manifest | ConvertTo-Json -Depth 10 | Set-Content caprica/vcpkg.json -Encoding utf8
           cmake -S caprica -B caprica/build -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
-            -DVCPKG_TARGET_TRIPLET=x64-windows-static `
+            -DVCPKG_TARGET_TRIPLET=x64-windows-static-release `
+            -DVCPKG_HOST_TRIPLET=x64-windows-static-release `
             -DCAPRICA_USE_STATIC_RUNTIME=ON
           if ($LASTEXITCODE -ne 0) { throw "Caprica configure failed" }
           cmake --build caprica/build

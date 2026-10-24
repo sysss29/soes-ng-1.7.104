@@ -1,0 +1,3 @@
+# Keep patches byte-exact on Windows build runners (core.autocrlf=true would break git apply)
+*.patch -text eol=lf
+*.yml   text eol=lf

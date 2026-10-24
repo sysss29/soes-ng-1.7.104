@@ -21,7 +21,7 @@ def relabel(key: str, value: str) -> str:
         return value
     u = re.fullmatch(r"Unofficial \(Typically (.+)\)", value)
     if u:
-        value = f"{u.group(1)} (unofficial)"
+        value = u.group(1)  # drop the "Unofficial" qualifier to save space
     return f"[{m.group(1)}] {value}"
 
 

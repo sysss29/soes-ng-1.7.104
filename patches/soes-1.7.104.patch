@@ -1,16 +1,124 @@
 diff --git a/contrib/Distribution/PapyrusSources/skyoutequsysmcm.psc b/contrib/Distribution/PapyrusSources/skyoutequsysmcm.psc
-index d921b8c..c47ab58 100644
+index d921b8c..e6a41eb 100644
 --- a/contrib/Distribution/PapyrusSources/skyoutequsysmcm.psc
 +++ b/contrib/Distribution/PapyrusSources/skyoutequsysmcm.psc
-@@ -15,6 +15,7 @@ String   _sOutfitShowingContextMenu = ""
+@@ -15,6 +15,14 @@ String   _sOutfitShowingContextMenu = ""
  Int      _iOutfitEditorBodySlotPage = 0
  
  String[] _sOutfitSlotNames
++Bool     _bMenuFreshlyOpened = True
++; 1.7.104 rebuild: outfit browser folders ("Category/Sub/Label" names) and search
++String   _sBrowserPath = ""      ; current category, "" = top level
++String   _sBrowserFilter = ""    ; search text; when set, a flat list of matches is shown
++String[] _sBrowserSubcats        ; child categories of _sBrowserPath
++String[] _sBrowserOutfits        ; full names of outfits shown on the page
++String[] _sBrowserMoveTargets     ; categories offered by "Move to category"
 +Int[]    _iOutfitSlotIndices
  String[] _sOutfitSlotArmors
  Armor[]  _kOutfitSlotArmors
  Armor[]  _kOutfitContents
-@@ -266,6 +267,7 @@ Function SetupSlotDataForOutfit(String asOutfitName)
+@@ -107,6 +115,10 @@ EndEvent
+ Event OnConfigInit()
+ EndEvent
+ Event OnConfigOpen()
++   ; 1.7.104 rebuild: Outfits page first. Set on every open so existing saves pick it up.
++   Pages = new String[2]
++   Pages[0] = "$SkyOutEquSys_MCM_OutfitList"
++   Pages[1] = "$SkyOutEquSys_MCM_Options"
+    InitializeOptions()
+    _iOutfitNameMaxBytes = SkyrimOutfitEquipmentSystemNativeFuncs.GetOutfitNameMaxLength()
+    _sOutfitImporter_ModList = SkyrimOutfitEquipmentSystemNativeFuncs.GetAllLoadedOutfitModsList()
+@@ -116,6 +128,7 @@ Event OnConfigOpen()
+    RefreshCache()
+ EndEvent
+ Event OnConfigClose()
++   _bMenuFreshlyOpened = True
+    If SkyrimOutfitEquipmentSystemNativeFuncs.IsEnabled()
+       SkyrimOutfitEquipmentSystemNativeFuncs.SetOutfitsUsingLocation(Game.GetPlayer().GetCurrentLocation(), Weather.GetCurrentWeather())
+       SkyrimOutfitEquipmentSystemNativeFuncs.RefreshArmorForAllConfiguredActors()
+@@ -125,6 +138,19 @@ Event OnConfigClose()
+    Endif
+ EndEvent
+ Event OnPageReset(String asPage)
++   If asPage == ""
++      ; 1.7.104 rebuild: SkyUI opens a mod on a blank page, before OnConfigOpen runs. Treat it as
++      ; the Outfits page so that is the default view. Initialise only on the first draw after
++      ; opening; later redraws of this page (after a click) must keep the browser state.
++      If _bMenuFreshlyOpened || _OutfitsPageMaxOutfits <= 0
++         _bMenuFreshlyOpened = False
++         InitializeOptions()
++         ResetOutfitBrowser()
++         ResetOutfitEditor()
++         RefreshCache()
++      EndIf
++      asPage = "$SkyOutEquSys_MCM_OutfitList"
++   EndIf
+    If asPage == "$SkyOutEquSys_MCM_Options"
+       ResetOutfitEditor()
+       ShowOptions()
+@@ -189,6 +215,50 @@ Function RefreshCache()
+    _sSelectedOutfit = SkyrimOutfitEquipmentSystemNativeFuncs.GetSelectedOutfit(_aCurrentActor)
+    ;
+    _sOutfitNames = SkyrimOutfitEquipmentSystemNativeFuncs.NaturalSort_ASCII(_sOutfitNames)
++   RefreshBrowserLists()
++EndFunction
++
++Function RefreshBrowserLists()
++   If _sBrowserFilter
++      _sBrowserSubcats = Utility.CreateStringArray(0)
++      _sBrowserOutfits = SkyrimOutfitEquipmentSystemNativeFuncs.SearchOutfits(_sBrowserFilter)
++   Else
++      _sBrowserSubcats = SkyrimOutfitEquipmentSystemNativeFuncs.ListOutfitSubcategories(_sBrowserPath)
++      If _sBrowserPath && _sBrowserSubcats.Length == 0 && SkyrimOutfitEquipmentSystemNativeFuncs.CountOutfitsInCategory(_sBrowserPath) == 0
++         _sBrowserPath = "" ; category no longer exists (e.g. its last outfit was moved away)
++         _sBrowserSubcats = SkyrimOutfitEquipmentSystemNativeFuncs.ListOutfitSubcategories(_sBrowserPath)
++      EndIf
++      _sBrowserOutfits = SkyrimOutfitEquipmentSystemNativeFuncs.ListOutfitsInCategory(_sBrowserPath)
++   EndIf
++EndFunction
++
++String Function BrowserChildPath(String asChild)
++   If _sBrowserPath
++      Return _sBrowserPath + "/" + asChild
++   EndIf
++   Return asChild
++EndFunction
++
++String Function BrowserParentPath(String asPath)
++   ; Everything before the last "/" ("" at the top level).
++   Int iLast = -1
++   Int iFound = StringUtil.Find(asPath, "/")
++   While iFound >= 0
++      iLast = iFound
++      iFound = StringUtil.Find(asPath, "/", iFound + 1)
++   EndWhile
++   If iLast < 0
++      Return ""
++   EndIf
++   Return StringUtil.Substring(asPath, 0, iLast)
++EndFunction
++
++; New outfits created while browsing a category go into that category.
++String Function NameInCurrentCategory(String asName)
++   If _sBrowserPath && !_sBrowserFilter && StringUtil.Find(asName, "/") < 0
++      Return _sBrowserPath + "/" + asName
++   EndIf
++   Return asName
+ EndFunction
+ 
+ Function ResetActorSelection()
+@@ -212,6 +282,10 @@ Function ResetOutfitBrowser()
+    _sEditingOutfit       = ""
+    _sOutfitShowingContextMenu = ""
+    _sOutfitNames = new String[1]
++   _sBrowserPath = ""
++   _sBrowserFilter = ""
++   _sBrowserSubcats = new String[1]
++   _sBrowserOutfits = new String[1]
+    _sOutfitShowingSlotEditor = False
+ EndFunction
+ Function ResetOutfitEditor()
+@@ -266,6 +340,7 @@ Function SetupSlotDataForOutfit(String asOutfitName)
     ;
     SkyrimOutfitEquipmentSystemNativeFuncs.PrepOutfitBodySlotListing(asOutfitName)
     Int[] iSlots = SkyrimOutfitEquipmentSystemNativeFuncs.GetOutfitBodySlotListingSlotIndices()
@@ -18,16 +126,300 @@ index d921b8c..c47ab58 100644
     _sOutfitSlotNames = Utility.CreateStringArray(iSlots.Length)
     Int iIterator = 0
     While iIterator < iSlots.Length
-@@ -287,7 +289,7 @@ EndFunction
+@@ -286,8 +361,15 @@ EndFunction
+          ForcePageReset()
           Return
        EndIf
++      If StringUtil.Substring(sState, 0, 18) == "OutfitBrowser_Cat_"
++         Int iCategory = StringUtil.Substring(sState, 18) as Int
++         If iCategory >= 0 && iCategory < _sBrowserSubcats.Length
++            OpenBrowserPath(BrowserChildPath(_sBrowserSubcats[iCategory]))
++         EndIf
++         Return
++      EndIf
        If StringUtil.Substring(sState, 0, 22) == "OutfitEditor_BodySlot_"
 -         Int iEntryIndex = (_iOutfitEditorBodySlotPage*8) + (StringUtil.Substring(sState, 22) as Int)
 +         Int iEntryIndex = StringUtil.Substring(sState, 22) as Int
           String sArmorName = _sOutfitSlotArmors[iEntryIndex]
           Armor  kArmorForm = _kOutfitSlotArmors[iEntryIndex]
           Bool bDelete = ShowMessage("$SkyOutEquSys_Confirm_RemoveArmor_Text{" + sArmorName + "}", True, "$SkyOutEquSys_Confirm_RemoveArmor_Yes", "$SkyOutEquSys_Confirm_RemoveArmor_No")
-@@ -1654,56 +1656,33 @@ EndFunction
+@@ -447,6 +529,10 @@ EndFunction
+          SetInfoText("$SkyOutEquSys_MCMInfoText_Outfit")
+          Return
+       EndIf
++      If StringUtil.Substring(sState, 0, 18) == "OutfitBrowser_Cat_"
++         SetInfoText("Open this category.")
++         Return
++      EndIf
+       If StringUtil.Substring(sState, 0, 22) == "OutfitEditor_BodySlot_"
+          SetInfoText("$SkyOutEquSys_MCMInfoText_BodySlot")
+          Return
+@@ -756,54 +842,61 @@ EndFunction
+          SetCursorFillMode(TOP_TO_BOTTOM)
+          ;/Block/; ; Left column
+             SetCursorPosition(0)
+-            AddHeaderOption("$SkyOutEquSys_MCMHeader_OutfitList")
++            ; 1.7.104 rebuild: folders. Rows are: optional Back row, then subcategories, then
++            ; outfits in this category (or search matches), paged _OutfitsPageMaxOutfits at a time.
++            If _sBrowserFilter
++               AddHeaderOption("Search: " + _sBrowserFilter)
++               AddTextOptionST("OutfitBrowser_Up", "< Clear search", "")
++            ElseIf _sBrowserPath
++               AddHeaderOption("Outfits / " + _sBrowserPath)
++               AddTextOptionST("OutfitBrowser_Up", "< Back", "")
++            Else
++               AddHeaderOption("$SkyOutEquSys_MCMHeader_OutfitList")
++            EndIf
+ 
+-            Int iCount
+-            Int iPageCount
+-            Int iFlagsPrev
+-            Int iFlagsNext
+-            
+-            If _sOutfitNames.Length > _OutfitsPageMaxOutfits ; too many to fit on one screen
+-               iCount     = _sOutfitNames.Length
++            Int iSubCount = _sBrowserSubcats.Length
++            Int iCount = iSubCount + _sBrowserOutfits.Length
++            Int iPageCount = 1
++            Int iFlagsPrev = OPTION_FLAG_DISABLED
++            Int iFlagsNext = OPTION_FLAG_DISABLED
++            If _OutfitsPageMaxOutfits > 0 && iCount > _OutfitsPageMaxOutfits
+                iPageCount = iCount / _OutfitsPageMaxOutfits
+                If iPageCount * _OutfitsPageMaxOutfits < iCount
+                   iPageCount = iPageCount + 1
+                EndIf
+-               If _iOutfitBrowserPage >= iPageCount
+-                  _iOutfitBrowserPage = iPageCount - 1
+-               EndIf
+-               Int iOffset    = _iOutfitBrowserPage * _OutfitsPageMaxOutfits
+-               Int iIterator  = 0
+-               Int iMax       = iCount - iOffset
+-               If iMax > _OutfitsPageMaxOutfits
+-                  iMax = _OutfitsPageMaxOutfits
+-               EndIf
+-               While iIterator < iMax
+-                  String sName = _sOutfitNames[iIterator + iOffset]
+-                  String sMark = " "
+-                  If sName == _sSelectedOutfit
+-                     sMark = "$SkyOutEquSys_OutfitBrowser_ActiveMark"
+-                     If sName == _sOutfitShowingContextMenu
+-                        sMark = "$SkyOutEquSys_OutfitBrowser_ContextActiveMark"
+-                     EndIf
+-                  ElseIf sName == _sOutfitShowingContextMenu
+-                     sMark = "$SkyOutEquSys_OutfitBrowser_ContextMark"
+-                  EndIf
+-                  AddTextOptionST("OutfitList_Item_" + sName, sName, sMark)
+-                  iIterator = iIterator + 1
+-               EndWhile
++            EndIf
++            If _iOutfitBrowserPage >= iPageCount
++               _iOutfitBrowserPage = iPageCount - 1
++            EndIf
++            If _iOutfitBrowserPage < 0
++               _iOutfitBrowserPage = 0
++            EndIf
++            If _iOutfitBrowserPage > 0
+                iFlagsPrev = OPTION_FLAG_NONE
++            EndIf
++            If _iOutfitBrowserPage < iPageCount - 1
+                iFlagsNext = OPTION_FLAG_NONE
+-               If _iOutfitBrowserPage < 1
+-                  iFlagsPrev = OPTION_FLAG_DISABLED
+-               EndIf
+-               If _iOutfitBrowserPage == iPageCount - 1
+-                  iFlagsNext = OPTION_FLAG_DISABLED
+-               EndIf               
+-            Else
+-               Int iIterator = 0
+-               While iIterator < _sOutfitNames.Length
+-                  String sName = _sOutfitNames[iIterator]
++            EndIf
++            Int iPerPage = iCount
++            If iPageCount > 1
++               iPerPage = _OutfitsPageMaxOutfits
++            EndIf
++            Int iRow = _iOutfitBrowserPage * iPerPage
++            Int iEnd = iRow + iPerPage
++            If iEnd > iCount
++               iEnd = iCount
++            EndIf
++            While iRow < iEnd
++               If iRow < iSubCount
++                  String sCategory = _sBrowserSubcats[iRow]
++                  Int iInside = SkyrimOutfitEquipmentSystemNativeFuncs.CountOutfitsInCategory(BrowserChildPath(sCategory))
++                  AddTextOptionST("OutfitBrowser_Cat_" + iRow, sCategory + "  >", "(" + iInside + ")")
++               Else
++                  String sName = _sBrowserOutfits[iRow - iSubCount]
++                  String sLabel = sName
++                  If !_sBrowserFilter
++                     sLabel = SkyrimOutfitEquipmentSystemNativeFuncs.GetOutfitLabel(sName)
++                  EndIf
+                   String sMark = " "
+                   If sName == _sSelectedOutfit
+                      sMark = "$SkyOutEquSys_OutfitBrowser_ActiveMark"
+@@ -813,15 +906,18 @@ EndFunction
+                   ElseIf sName == _sOutfitShowingContextMenu
+                      sMark = "$SkyOutEquSys_OutfitBrowser_ContextMark"
+                   EndIf
+-                  AddTextOptionST("OutfitList_Item_" + sName, sName, sMark)
+-                  iIterator = iIterator + 1
+-               EndWhile
++                  AddTextOptionST("OutfitList_Item_" + sName, sLabel, sMark)
++               EndIf
++               iRow = iRow + 1
++            EndWhile
++            If iCount == 0 && _sBrowserFilter
++               AddTextOption("No outfits match.", "", OPTION_FLAG_DISABLED)
+             EndIf
+          ;/EndBlock/;
+          ;/Block/; ; Right column
+             SetCursorPosition(1)
+ 
+-            If _sOutfitNames.Length > _OutfitsPageMaxOutfits
++            If iPageCount > 1
+                AddHeaderOption("")
+                AddTextOptionST("OutfitBrowser_Prev", "$SkyOutEquSys_MCMText_OutfitListPageNumber{" + (_iOutfitBrowserPage + 1) + "}{" + iPageCount + "}", "$SkyOutEquSys_MCMText_OutfitListButtonPagePrev", iFlagsPrev)
+                AddTextOptionST("OutfitBrowser_Next", "", "$SkyOutEquSys_MCMText_OutfitListButtonPageNext", iFlagsNext)
+@@ -836,6 +932,9 @@ EndFunction
+                AddInputOptionST("OutfitContext_NewFromWorn", "$SkyOutEquSys_OContext_NewFromWorn", "")
+             EndIf
+ 
++            If !_IsVRMode
++               AddInputOptionST("OutfitBrowser_Search", "Search outfits...", _sBrowserFilter)
++            EndIf
+             AddMenuOptionST("OutfitContext_SelectImportMod", "$SkyOutEquSys_OContext_SelectImportMod", _sOutfitImporter_SelectedMod)
+             AddMenuOptionST("OutfitContext_ImportOutfitFromMod", "$SkyOutEquSys_OContext_ImportOutfitsFromMod", "")
+             ;
+@@ -859,9 +958,112 @@ EndFunction
+                AddInputOptionST("OutfitContext_Rename", "$SkyOutEquSys_OContext_Rename", "", iContextFlags)
+             EndIf
+ 
++            AddMenuOptionST("OutfitContext_MoveToCategory", "Move to category...", SkyrimOutfitEquipmentSystemNativeFuncs.GetOutfitCategory(_sOutfitShowingContextMenu), iContextFlags)
++            If !_IsVRMode
++               AddInputOptionST("OutfitContext_MoveToNewCategory", "Move to new category...", "", iContextFlags)
++            EndIf
++
+             AddTextOptionST ("OutfitContext_Delete", "$SkyOutEquSys_OContext_Delete", "", iContextFlags)
+          ;/EndBlock/;
+       EndFunction
++
++      ; 1.7.104 rebuild: folder navigation, search and category moves
++      Function OpenBrowserPath(String asPath)
++         _sBrowserPath = asPath
++         _sBrowserFilter = ""
++         _iOutfitBrowserPage = 0
++         _sOutfitShowingContextMenu = ""
++         RefreshBrowserLists()
++         ForcePageReset()
++      EndFunction
++      State OutfitBrowser_Up
++         Event OnSelectST()
++            If _sBrowserFilter
++               _sBrowserFilter = ""
++               _iOutfitBrowserPage = 0
++               RefreshBrowserLists()
++               ForcePageReset()
++            Else
++               OpenBrowserPath(BrowserParentPath(_sBrowserPath))
++            EndIf
++         EndEvent
++         Event OnHighlightST()
++            SetInfoText("Go back up one level.")
++         EndEvent
++      EndState
++      State OutfitBrowser_Search
++         Event OnInputOpenST()
++            SetInputDialogStartText(_sBrowserFilter)
++         EndEvent
++         Event OnInputAcceptST(String asTextEntry)
++            _sBrowserFilter = asTextEntry
++            _iOutfitBrowserPage = 0
++            _sOutfitShowingContextMenu = ""
++            RefreshBrowserLists()
++            ForcePageReset()
++         EndEvent
++         Event OnHighlightST()
++            SetInfoText("Show all outfits whose name contains the text, across all categories. Clear it to go back to folders.")
++         EndEvent
++      EndState
++      Function MoveContextOutfitTo(String asCategory)
++         If !_sOutfitShowingContextMenu
++            Return
++         EndIf
++         String sNewName = SkyrimOutfitEquipmentSystemNativeFuncs.MoveOutfitToCategory(_sOutfitShowingContextMenu, asCategory)
++         If !sNewName
++            ShowMessage("$SkyOutEquSys_Err_OutfitNameTaken", False, "$SkyOutEquSys_ErrDismiss")
++            Return
++         EndIf
++         If _sSelectedOutfit == _sOutfitShowingContextMenu
++            _sSelectedOutfit = sNewName
++         EndIf
++         _sOutfitShowingContextMenu = sNewName
++         RefreshCache()
++         ForcePageReset()
++      EndFunction
++      State OutfitContext_MoveToCategory
++         Event OnMenuOpenST()
++            String[] sCategories = SkyrimOutfitEquipmentSystemNativeFuncs.ListAllOutfitCategories()
++            String[] sMenu = Utility.CreateStringArray(sCategories.Length + 2)
++            sMenu[0] = "$SkyOutEquSys_OEdit_AddCancel"
++            sMenu[1] = "[Top level - no category]"
++            Int i = 0
++            While i < sCategories.Length
++               sMenu[i + 2] = sCategories[i]
++               i += 1
++            EndWhile
++            _sBrowserMoveTargets = sCategories
++            SetMenuDialogOptions(sMenu)
++            SetMenuDialogStartIndex(0)
++            SetMenuDialogDefaultIndex(0)
++         EndEvent
++         Event OnMenuAcceptST(Int aiIndex)
++            If aiIndex <= 0
++               Return
++            ElseIf aiIndex == 1
++               MoveContextOutfitTo("")
++            ElseIf aiIndex - 2 < _sBrowserMoveTargets.Length
++               MoveContextOutfitTo(_sBrowserMoveTargets[aiIndex - 2])
++            EndIf
++         EndEvent
++         Event OnHighlightST()
++            SetInfoText("Move this outfit into an existing category. Use 'Move to new category' to create one; nested categories use '/', e.g. Armor/Heavy.")
++         EndEvent
++      EndState
++      State OutfitContext_MoveToNewCategory
++         Event OnInputOpenST()
++            SetInputDialogStartText(_sBrowserPath)
++         EndEvent
++         Event OnInputAcceptST(String asTextEntry)
++            If asTextEntry
++               MoveContextOutfitTo(asTextEntry)
++            EndIf
++         EndEvent
++         Event OnHighlightST()
++            SetInfoText("Type a category name (use '/' for subcategories, e.g. Armor/Heavy). The outfit keeps its own name.")
++         EndEvent
++      EndState
+       State OutfitBrowser_Prev
+          Event OnSelectST()
+             _iOutfitBrowserPage = _iOutfitBrowserPage - 1
+@@ -876,6 +1078,7 @@ EndFunction
+       EndState
+ 
+       Function OutfitContext_NewF(String asTextEntry)
++         asTextEntry = NameInCurrentCategory(asTextEntry)
+          If StringUtil.GetLength(asTextEntry) > _iOutfitNameMaxBytes
+             ShowMessage("$SkyOutEquSys_Err_OutfitNameTooLong", False, "$SkyOutEquSys_ErrDismiss")
+             Return
+@@ -890,6 +1093,7 @@ EndFunction
+       EndFunction
+ 
+       Function OutfitContext_NewFromWornF(String asTextEntry)
++         asTextEntry = NameInCurrentCategory(asTextEntry)
+          If StringUtil.GetLength(asTextEntry) > _iOutfitNameMaxBytes
+             ShowMessage("$SkyOutEquSys_Err_OutfitNameTooLong", False, "$SkyOutEquSys_ErrDismiss")
+             Return
+@@ -1654,56 +1858,33 @@ EndFunction
           ;       listing the outfit contents was designed at that 
           ;       stage of development.)
           ;
@@ -49,6 +441,29 @@ index d921b8c..c47ab58 100644
 -            While iIterator < iMax
 -               String sSlot  = _sOutfitSlotNames [iIterator + iOffset]
 -               String sArmor = _sOutfitSlotArmors[iIterator + iOffset]
+-               If !sArmor
+-                  sArmor = "$SkyOutEquSys_NamelessArmor"
+-               EndIf
+-               AddTextOptionST("OutfitEditor_BodySlot_" + iIterator, sSlot, sArmor)
+-               iIterator = iIterator + 1
+-            EndWhile
+-            Int iFlagsPrev = OPTION_FLAG_NONE
+-            Int iFlagsNext = OPTION_FLAG_NONE
+-            If _iOutfitEditorBodySlotPage < 1
+-               iFlagsPrev = OPTION_FLAG_DISABLED
+-            EndIf
+-            If _iOutfitEditorBodySlotPage == iPageCount - 1
+-               iFlagsNext = OPTION_FLAG_DISABLED
+-            EndIf
+-            SetCursorPosition(19)
+-            AddHeaderOption("")
+-            AddTextOptionST("OutfitEditor_BodySlotsPrev", "$SkyOutEquSys_MCMText_OutfitSlotsPageNumber{" + (_iOutfitEditorBodySlotPage + 1) + "}{" + iPageCount + "}", "$SkyOutEquSys_MCMText_OutfitSlotsButtonPagePrev", iFlagsPrev)
+-            AddTextOptionST("OutfitEditor_BodySlotsNext", "", "$SkyOutEquSys_MCMText_OutfitSlotsButtonPageNext", iFlagsNext)
+-         ElseIf iSlotCount
+-            Int iIterator = 0
+-            While iIterator < iSlotCount
+-               String sSlot  = _sOutfitSlotNames[iIterator]
+-               String sArmor = _sOutfitSlotArmors[iIterator]
 -               If !sArmor
 -                  sArmor = "$SkyOutEquSys_NamelessArmor"
 +         ; 1.7.104 rebuild: list every body slot (30-61) on one scrolling page, in slot order.
@@ -75,39 +490,41 @@ index d921b8c..c47ab58 100644
 -               iIterator = iIterator + 1
 +               iEntry = iEntry + 1
              EndWhile
--            Int iFlagsPrev = OPTION_FLAG_NONE
--            Int iFlagsNext = OPTION_FLAG_NONE
--            If _iOutfitEditorBodySlotPage < 1
--               iFlagsPrev = OPTION_FLAG_DISABLED
--            EndIf
--            If _iOutfitEditorBodySlotPage == iPageCount - 1
--               iFlagsNext = OPTION_FLAG_DISABLED
-+            If !bFilled
-+               AddTextOption(BodySlotName(iSlot), "$SkyOutEquSys_EmptySlot", OPTION_FLAG_DISABLED)
-             EndIf
--            SetCursorPosition(19)
--            AddHeaderOption("")
--            AddTextOptionST("OutfitEditor_BodySlotsPrev", "$SkyOutEquSys_MCMText_OutfitSlotsPageNumber{" + (_iOutfitEditorBodySlotPage + 1) + "}{" + iPageCount + "}", "$SkyOutEquSys_MCMText_OutfitSlotsButtonPagePrev", iFlagsPrev)
--            AddTextOptionST("OutfitEditor_BodySlotsNext", "", "$SkyOutEquSys_MCMText_OutfitSlotsButtonPageNext", iFlagsNext)
--         ElseIf iSlotCount
--            Int iIterator = 0
--            While iIterator < iSlotCount
--               String sSlot  = _sOutfitSlotNames[iIterator]
--               String sArmor = _sOutfitSlotArmors[iIterator]
--               If !sArmor
--                  sArmor = "$SkyOutEquSys_NamelessArmor"
--               EndIf
--               AddTextOptionST("OutfitEditor_BodySlot_" + iIterator, sSlot, sArmor)
--               iIterator = iIterator + 1
--            EndWhile
 -         Else
 -            AddTextOption("$SkyOutEquSys_OutfitEditor_OutfitIsEmpty", "")
 -         EndIf
++            If !bFilled
++               AddTextOption(BodySlotName(iSlot), "$SkyOutEquSys_EmptySlot", OPTION_FLAG_DISABLED)
++            EndIf
 +            iSlot = iSlot + 1
 +         EndWhile
        ;/EndBlock/;
        EndFunction
        Function AddArmorToOutfit(Armor kAdd)
+@@ -1757,13 +1938,12 @@ EndFunction
+                If kCurrent
+                   sCurrent = kCurrent.GetName()
+                EndIf
+-               If !sCurrent
+-                  sCurrent = "$SkyOutEquSys_NamelessArmor"
+-               EndIf
+                _sOutfitEditor_AddCandidates[iIterator] = sCurrent
+                iIterator = iIterator + 1
+             EndWhile
+             ;
++            ; 1.7.104 rebuild: label by body slot ("[37] Elven Boots") so the sort groups items by slot
++            _sOutfitEditor_AddCandidates = SkyrimOutfitEquipmentSystemNativeFuncs.PrefixArmorNamesWithSlot(_sOutfitEditor_AddCandidates, _kOutfitEditor_AddCandidates)
+             _kOutfitEditor_AddCandidates = SkyrimOutfitEquipmentSystemNativeFuncs.NaturalSortPairArmor_ASCII(_sOutfitEditor_AddCandidates, _kOutfitEditor_AddCandidates)
+             _sOutfitEditor_AddCandidates = SkyrimOutfitEquipmentSystemNativeFuncs.NaturalSort_ASCII(_sOutfitEditor_AddCandidates)
+             ;
+@@ -1899,6 +2079,7 @@ EndFunction
+             _kOutfitEditor_AddFromListCandidates = SkyrimOutfitEquipmentSystemNativeFuncs.GetArmorSearchResultForms()
+             SkyrimOutfitEquipmentSystemNativeFuncs.ClearArmorSearch()
+             ;
++            _sOutfitEditor_AddFromListCandidates = SkyrimOutfitEquipmentSystemNativeFuncs.PrefixArmorNamesWithSlot(_sOutfitEditor_AddFromListCandidates, _kOutfitEditor_AddFromListCandidates)
+             _kOutfitEditor_AddFromListCandidates = SkyrimOutfitEquipmentSystemNativeFuncs.NaturalSortPairArmor_ASCII(_sOutfitEditor_AddFromListCandidates, _kOutfitEditor_AddFromListCandidates)
+             _sOutfitEditor_AddFromListCandidates = SkyrimOutfitEquipmentSystemNativeFuncs.NaturalSort_ASCII(_sOutfitEditor_AddFromListCandidates)
+          EndFunction
 diff --git a/contrib/Distribution/PapyrusSources/skyoutequsysquicksloteffect.psc b/contrib/Distribution/PapyrusSources/skyoutequsysquicksloteffect.psc
 index 4dc5118..8c903eb 100644
 --- a/contrib/Distribution/PapyrusSources/skyoutequsysquicksloteffect.psc
@@ -290,6 +707,44 @@ index 4dc5118..8c903eb 100644
     If result == "[NO OUTFIT]"
        result = ""
     Endif
+diff --git a/contrib/Distribution/PapyrusSources/skyrimoutfitequipmentsystemnativefuncs.psc b/contrib/Distribution/PapyrusSources/skyrimoutfitequipmentsystemnativefuncs.psc
+index 7be4d71..528f4fc 100644
+--- a/contrib/Distribution/PapyrusSources/skyrimoutfitequipmentsystemnativefuncs.psc
++++ b/contrib/Distribution/PapyrusSources/skyrimoutfitequipmentsystemnativefuncs.psc
+@@ -76,6 +76,16 @@ String[] Function GetAvailablePolicyCodes() Global Native
+ String   Function GetSelectedOutfit (Actor actor) Global Native
+ Bool     Function IsEnabled         () Global Native
+ String[] Function ListOutfits       (Bool favoritesOnly = False) Global Native
++; 1.7.104 rebuild: outfit categories ("Category/Sub/Label" names). Paths use "/" ("" = top level).
++String[] Function ListOutfitSubcategories (String asPath) Global Native ; child category names, sorted
++String[] Function PrefixArmorNamesWithSlot (String[] asNames, Armor[] akArmors) Global Native ; "[NN] Name", NN = lowest body slot
++Int      Function CountOutfitsInCategory  (String asPath) Global Native ; includes subcategories
++String[] Function ListOutfitsInCategory   (String asPath) Global Native ; full names directly in asPath
++String[] Function SearchOutfits           (String asFilter) Global Native ; full names containing asFilter
++String[] Function ListAllOutfitCategories () Global Native ; every category path in use
++String   Function GetOutfitLabel          (String asOutfitName) Global Native ; name without category
++String   Function GetOutfitCategory       (String asOutfitName) Global Native ; "" when uncategorised
++String   Function MoveOutfitToCategory    (String asOutfitName, String asCategory) Global Native ; new name, "" on failure
+          Function RemoveArmorFromOutfit (String asOutfitName, Armor akArmor) Global Native
+          Function RemoveConflictingArmorsFrom (Armor akTest, String asOutfitName) Global Native
+ Bool     Function RenameOutfit      (String asOutfitName, String asRenameTo) Global Native
+diff --git a/include/ArmorAddonOverrideService.h b/include/ArmorAddonOverrideService.h
+index 66063d1..d07f5ad 100644
+--- a/include/ArmorAddonOverrideService.h
++++ b/include/ArmorAddonOverrideService.h
+@@ -74,9 +74,10 @@ struct WeatherFlags {
+ 
+ struct Outfit {
+     Outfit(const proto::Outfit& proto, const SKSE::SerializationInterface* intfc);
+-    Outfit(const char* n) : m_name(n), m_favorited(false){};
++    // 1.7.104 rebuild: new outfits start as favourites (they can still be unmarked).
++    Outfit(const char* n) : m_name(n), m_favorited(true){};
+     Outfit(const Outfit& other) = default;
+-    Outfit(const char* n, const Outfit& other) : m_name(n), m_favorited(false) {
++    Outfit(const char* n, const Outfit& other) : m_name(n), m_favorited(other.m_favorited) {
+         m_armors = other.m_armors;
+     }
+     std::string m_name;// can't be const; prevents assigning to Outfit vars
 diff --git a/include/Utility.h b/include/Utility.h
 index ee0e5f5..133067c 100644
 --- a/include/Utility.h
@@ -374,7 +829,7 @@ index 70d8fb9..1684b0c 100644
  
      } else if (message->type == SKSE::MessagingInterface::kPostPostLoad) {
 diff --git a/src/OutfitSystem.cpp b/src/OutfitSystem.cpp
-index 17c05ca..4513932 100644
+index 17c05ca..3a7fa02 100644
 --- a/src/OutfitSystem.cpp
 +++ b/src/OutfitSystem.cpp
 @@ -463,7 +463,7 @@ namespace OutfitSystem {
@@ -436,7 +891,242 @@ index 17c05ca..4513932 100644
          std::vector<std::string> g_cachedModList;
          bool g_isModListCached = false;
  
-@@ -1127,7 +1148,7 @@ namespace OutfitSystem {
+@@ -1090,6 +1111,234 @@ namespace OutfitSystem {
+             result.push_back(it->c_str());
+         return result;
+     }
++    // ------------------------------------------------------------------------------------------
++    // 1.7.104 rebuild: outfit categories.
++    // An outfit named "Armor/Heavy/Steel" sits in category "Armor/Heavy" with label "Steel".
++    // Segments are trimmed, empty segments ignored, matching ignores case (like Papyrus), and at
++    // most kMaxCategoryDepth levels are used (deeper '/' stay in the label). This mirrors the
++    // quick-slot menu script so both group outfits identically.
++    // ------------------------------------------------------------------------------------------
++    namespace OutfitCategories {
++        constexpr std::size_t kMaxCategoryDepth = 4;
++
++        std::string Trim(std::string_view a_str) {
++            auto begin = a_str.find_first_not_of(' ');
++            if (begin == std::string_view::npos) return {};
++            auto end = a_str.find_last_not_of(' ');
++            return std::string(a_str.substr(begin, end - begin + 1));
++        }
++
++        bool IEquals(const std::string& a_lhs, const std::string& a_rhs) {
++            return a_lhs.size() == a_rhs.size() && _stricmp(a_lhs.c_str(), a_rhs.c_str()) == 0;
++        }
++
++        bool NaturalLess(const std::string& a_lhs, const std::string& a_rhs) {
++            return cobb::utf8::naturalcompare(a_lhs, a_rhs) > 0;  // same convention as NaturalSort_ASCII
++        }
++
++        struct Parsed {
++            std::vector<std::string> categories;
++            std::string label;
++        };
++
++        Parsed Parse(const std::string& a_fullName) {
++            std::vector<std::string> parts;
++            std::size_t start = 0;
++            while (true) {
++                auto slash = a_fullName.find('/', start);
++                parts.push_back(a_fullName.substr(start, slash == std::string::npos ? std::string::npos : slash - start));
++                if (slash == std::string::npos) break;
++                start = slash + 1;
++            }
++            Parsed result;
++            std::size_t depth = parts.size() - 1;
++            if (depth > kMaxCategoryDepth) depth = kMaxCategoryDepth;
++            for (std::size_t i = 0; i < depth; ++i) {
++                auto segment = Trim(parts[i]);
++                if (!segment.empty()) result.categories.push_back(segment);
++            }
++            for (std::size_t i = depth; i < parts.size(); ++i) {
++                if (!result.label.empty()) result.label += "/";
++                result.label += Trim(parts[i]);
++            }
++            if (result.label.empty()) result.label = a_fullName;
++            return result;
++        }
++
++        std::vector<std::string> ParsePath(const std::string& a_path) {
++            std::vector<std::string> segments;
++            if (Trim(a_path).empty()) return segments;
++            return Parse(a_path + "/x").categories;
++        }
++
++        std::string JoinPath(const std::vector<std::string>& a_segments, std::size_t a_count) {
++            std::string path;
++            for (std::size_t i = 0; i < a_count && i < a_segments.size(); ++i) {
++                if (!path.empty()) path += "/";
++                path += a_segments[i];
++            }
++            return path;
++        }
++
++        // True if a_categories starts with a_prefix (case-insensitive, segment by segment).
++        bool HasPrefix(const std::vector<std::string>& a_categories, const std::vector<std::string>& a_prefix) {
++            if (a_categories.size() < a_prefix.size()) return false;
++            for (std::size_t i = 0; i < a_prefix.size(); ++i)
++                if (!IEquals(a_categories[i], a_prefix[i])) return false;
++            return true;
++        }
++
++        std::vector<std::string> AllOutfitNames(bool a_favoritesOnly = false) {
++            std::vector<std::string> names;
++            ArmorAddonOverrideService::GetInstance().getOutfitNames(names, a_favoritesOnly);
++            return names;
++        }
++
++        void AddUnique(std::vector<std::string>& a_list, const std::string& a_value) {
++            for (const auto& existing : a_list)
++                if (IEquals(existing, a_value)) return;
++            a_list.push_back(a_value);
++        }
++    }
++
++    // 1.7.104 rebuild: "[NN] Name" labels for armor pickers, NN = lowest body slot the armor uses
++    // (30-61), so a natural sort groups armors by slot. Empty names become "[Unnamed]".
++    std::vector<RE::BSFixedString> PrefixArmorNamesWithSlot(RE::BSScript::IVirtualMachine*, std::uint32_t, RE::StaticFunctionTag*,
++                                                            std::vector<RE::BSFixedString> a_names,
++                                                            std::vector<RE::TESObjectARMO*> a_armors) {
++        std::vector<RE::BSFixedString> result;
++        result.reserve(a_names.size());
++        for (std::size_t i = 0; i < a_names.size(); ++i) {
++            std::string name = a_names[i].data() ? a_names[i].data() : "";
++            if (name.empty()) name = "[Unnamed]";
++            std::string prefix = "[--] ";
++            if (i < a_armors.size() && a_armors[i]) {
++                auto mask = static_cast<std::uint32_t>(a_armors[i]->GetSlotMask().underlying());
++                for (std::uint32_t bit = 0; bit < 32; ++bit) {
++                    if (mask & (1u << bit)) {
++                        prefix = fmt::format("[{}] ", 30 + bit);
++                        break;
++                    }
++                }
++            }
++            result.emplace_back((prefix + name).c_str());
++        }
++        return result;
++    }
++
++    // Direct child categories of a_path ("" = top level), as names (not full paths), sorted.
++    std::vector<RE::BSFixedString> ListOutfitSubcategories(RE::BSScript::IVirtualMachine*, std::uint32_t, RE::StaticFunctionTag*,
++                                                           RE::BSFixedString a_path) {
++        using namespace OutfitCategories;
++        auto path = ParsePath(a_path.data());
++        std::vector<std::string> children;
++        for (const auto& name : AllOutfitNames()) {
++            auto parsed = Parse(name);
++            if (parsed.categories.size() > path.size() && HasPrefix(parsed.categories, path))
++                AddUnique(children, parsed.categories[path.size()]);
++        }
++        std::sort(children.begin(), children.end(), NaturalLess);
++        std::vector<RE::BSFixedString> result;
++        for (const auto& child : children) result.emplace_back(child.c_str());
++        return result;
++    }
++
++    // Number of outfits in a category, including its subcategories.
++    std::int32_t CountOutfitsInCategory(RE::BSScript::IVirtualMachine*, std::uint32_t, RE::StaticFunctionTag*,
++                                        RE::BSFixedString a_path) {
++        using namespace OutfitCategories;
++        auto path = ParsePath(a_path.data());
++        std::int32_t count = 0;
++        for (const auto& name : AllOutfitNames())
++            if (HasPrefix(Parse(name).categories, path)) ++count;
++        return count;
++    }
++
++    // Full names of the outfits directly in a_path (not in its subcategories), sorted by label.
++    std::vector<RE::BSFixedString> ListOutfitsInCategory(RE::BSScript::IVirtualMachine*, std::uint32_t, RE::StaticFunctionTag*,
++                                                         RE::BSFixedString a_path) {
++        using namespace OutfitCategories;
++        auto path = ParsePath(a_path.data());
++        std::vector<std::pair<std::string, std::string>> found;  // label, full name
++        for (const auto& name : AllOutfitNames()) {
++            auto parsed = Parse(name);
++            if (parsed.categories.size() == path.size() && HasPrefix(parsed.categories, path))
++                found.emplace_back(parsed.label, name);
++        }
++        std::sort(found.begin(), found.end(), [](const auto& a, const auto& b) { return NaturalLess(a.first, b.first); });
++        std::vector<RE::BSFixedString> result;
++        for (const auto& entry : found) result.emplace_back(entry.second.c_str());
++        return result;
++    }
++
++    // Full names of all outfits whose name contains a_filter (case-insensitive), sorted.
++    std::vector<RE::BSFixedString> SearchOutfits(RE::BSScript::IVirtualMachine*, std::uint32_t, RE::StaticFunctionTag*,
++                                                 RE::BSFixedString a_filter) {
++        using namespace OutfitCategories;
++        auto lower = [](std::string s) {
++            std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
++            return s;
++        };
++        auto needle = lower(Trim(a_filter.data()));
++        std::vector<std::string> found;
++        for (const auto& name : AllOutfitNames())
++            if (needle.empty() || lower(name).find(needle) != std::string::npos) found.push_back(name);
++        std::sort(found.begin(), found.end(), NaturalLess);
++        std::vector<RE::BSFixedString> result;
++        for (const auto& name : found) result.emplace_back(name.c_str());
++        return result;
++    }
++
++    // Every category path in use (each level, e.g. "Armor" and "Armor/Heavy"), sorted.
++    std::vector<RE::BSFixedString> ListAllOutfitCategories(RE::BSScript::IVirtualMachine*, std::uint32_t, RE::StaticFunctionTag*) {
++        using namespace OutfitCategories;
++        std::vector<std::string> paths;
++        for (const auto& name : AllOutfitNames()) {
++            auto parsed = Parse(name);
++            for (std::size_t depth = 1; depth <= parsed.categories.size(); ++depth)
++                AddUnique(paths, JoinPath(parsed.categories, depth));
++        }
++        std::sort(paths.begin(), paths.end(), NaturalLess);
++        std::vector<RE::BSFixedString> result;
++        for (const auto& path : paths) result.emplace_back(path.c_str());
++        return result;
++    }
++
++    RE::BSFixedString GetOutfitLabel(RE::BSScript::IVirtualMachine*, std::uint32_t, RE::StaticFunctionTag*, RE::BSFixedString a_name) {
++        return RE::BSFixedString(OutfitCategories::Parse(a_name.data()).label.c_str());
++    }
++
++    RE::BSFixedString GetOutfitCategory(RE::BSScript::IVirtualMachine*, std::uint32_t, RE::StaticFunctionTag*, RE::BSFixedString a_name) {
++        auto parsed = OutfitCategories::Parse(a_name.data());
++        return RE::BSFixedString(OutfitCategories::JoinPath(parsed.categories, parsed.categories.size()).c_str());
++    }
++
++    // Renames an outfit so it sits in a_category ("" = top level), keeping its label.
++    // Returns the new full name, or "" if that name is taken or invalid.
++    RE::BSFixedString MoveOutfitToCategory(RE::BSScript::IVirtualMachine* registry, std::uint32_t stackId, RE::StaticFunctionTag*,
++                                           RE::BSFixedString a_name, RE::BSFixedString a_category) {
++        using namespace OutfitCategories;
++        std::string oldName = a_name.data();
++        auto path = ParsePath(a_category.data());
++        std::string newName = JoinPath(path, path.size());
++        if (!newName.empty()) newName += "/";
++        newName += Parse(oldName).label;
++        if (newName == oldName) return RE::BSFixedString(newName.c_str());
++        auto& service = ArmorAddonOverrideService::GetInstance();
++        try {
++            service.renameOutfit(oldName.c_str(), newName.c_str());
++        } catch (ArmorAddonOverrideService::bad_name) {
++            registry->TraceStack("The resulting name is invalid.", stackId, RE::BSScript::IVirtualMachine::Severity::kWarning);
++            return RE::BSFixedString("");
++        } catch (ArmorAddonOverrideService::name_conflict) {
++            return RE::BSFixedString("");
++        } catch (std::out_of_range) {
++            registry->TraceStack("The specified outfit does not exist.", stackId, RE::BSScript::IVirtualMachine::Severity::kWarning);
++            return RE::BSFixedString("");
++        }
++        return RE::BSFixedString(newName.c_str());
++    }
++
+     void RemoveArmorFromOutfit(RE::BSScript::IVirtualMachine* registry, std::uint32_t stackId, RE::StaticFunctionTag*,
+ 
+                                RE::BSFixedString name,
+@@ -1127,7 +1376,7 @@ namespace OutfitSystem {
                  RE::TESObjectARMO* existing = *it;
                  if (existing) {
                      const auto mask = existing->GetSlotMask();
@@ -445,7 +1135,7 @@ index 17c05ca..4513932 100644
                          != static_cast<uint32_t>(RE::BGSBipedObjectForm::FirstPersonFlag::kNone))
                          conflicts.push_back(existing);
                  }
-@@ -1277,7 +1298,7 @@ namespace OutfitSystem {
+@@ -1277,7 +1526,7 @@ namespace OutfitSystem {
              }
          }
  
@@ -454,6 +1144,49 @@ index 17c05ca..4513932 100644
          uint32_t addedCount = 0;
  
          // Iterate through all outfits in the mod
+@@ -1960,6 +2209,42 @@ bool OutfitSystem::RegisterPapyrus(RE::BSScript::IVirtualMachine* registry) {
+         "ListOutfits",
+         "SkyrimOutfitEquipmentSystemNativeFuncs",
+         ListOutfits);
++    registry->RegisterFunction(
++        "PrefixArmorNamesWithSlot",
++        "SkyrimOutfitEquipmentSystemNativeFuncs",
++        PrefixArmorNamesWithSlot);
++    registry->RegisterFunction(
++        "ListOutfitSubcategories",
++        "SkyrimOutfitEquipmentSystemNativeFuncs",
++        ListOutfitSubcategories);
++    registry->RegisterFunction(
++        "CountOutfitsInCategory",
++        "SkyrimOutfitEquipmentSystemNativeFuncs",
++        CountOutfitsInCategory);
++    registry->RegisterFunction(
++        "ListOutfitsInCategory",
++        "SkyrimOutfitEquipmentSystemNativeFuncs",
++        ListOutfitsInCategory);
++    registry->RegisterFunction(
++        "SearchOutfits",
++        "SkyrimOutfitEquipmentSystemNativeFuncs",
++        SearchOutfits);
++    registry->RegisterFunction(
++        "ListAllOutfitCategories",
++        "SkyrimOutfitEquipmentSystemNativeFuncs",
++        ListAllOutfitCategories);
++    registry->RegisterFunction(
++        "GetOutfitLabel",
++        "SkyrimOutfitEquipmentSystemNativeFuncs",
++        GetOutfitLabel);
++    registry->RegisterFunction(
++        "GetOutfitCategory",
++        "SkyrimOutfitEquipmentSystemNativeFuncs",
++        GetOutfitCategory);
++    registry->RegisterFunction(
++        "MoveOutfitToCategory",
++        "SkyrimOutfitEquipmentSystemNativeFuncs",
++        MoveOutfitToCategory);
+     registry->RegisterFunction(
+         "RemoveArmorFromOutfit",
+         "SkyrimOutfitEquipmentSystemNativeFuncs",
 diff --git a/src/Utility.cpp b/src/Utility.cpp
 index 7e0231a..2100b68 100644
 --- a/src/Utility.cpp

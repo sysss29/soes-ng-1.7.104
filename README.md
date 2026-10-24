@@ -27,6 +27,13 @@ Skyrim 1.7.99 / 1.7.104 instead of failing with
 - Papyrus scripts are compiled in CI with [Caprica](https://github.com/nikitalita/Caprica)
   against public script headers; no Creation Kit needed. The package ships the compiled
   `Scripts/*.pex` it changes and the patched `Interface/Translations` file.
+- Outfit categories: name outfits `Category/Sub/Name`. The quick-slot power shows them as a
+  nested menu; the Outfits page shows folders with counts, a Back row, search across all
+  categories, and "Move to category" / "Move to new category" actions. New outfits created
+  inside a folder go into it.
+- The outfit editor lists all 32 body slots on one scrolling page; armor pickers ("add from
+  inventory", "add any armor") label and group items by body slot, e.g. `[37] Elven Boots`.
+- New outfits start as favourites. The Outfits page comes first and opens by default.
 - Plugin version 0.1.5. No changes to the ESP.
 
 ## Install (MO2)

@@ -165,7 +165,7 @@ jobs:
           $src = (Resolve-Path soes/contrib/Distribution/PapyrusSources).Path
           $out = New-Item -ItemType Directory -Force -Path package/Scripts
           $flags = (Resolve-Path papyrus-headers/all/TESV_Papyrus_Flags.flg).Path
-          $names = @("skyoutequsysquicksloteffect.psc", "skyoutequsysmcm.psc")
+          $names = @("skyoutequsysquicksloteffect.psc", "skyoutequsysmcm.psc", "skyrimoutfitequipmentsystemnativefuncs.psc")
           $scripts = $names | ForEach-Object { Join-Path $src $_ }
           # The other SOES scripts (e.g. the native-function declarations) are imports; the ones being
           # compiled must not also be on the import path, or Caprica reports a name conflict.

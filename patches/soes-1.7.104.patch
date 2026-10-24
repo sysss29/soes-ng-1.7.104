@@ -31,6 +31,24 @@ index bc33b33..f935dcd 100644
  #define SKYRIMOUTFITEQUIPMENTSYSTEMNG_VERSION_BETA 0
  #define SKYRIMOUTFITEQUIPMENTSYSTEMNG_VERSION_VERSTRING SKYRIMOUTFITEQUIPMENTSYSTEMNG_MAKE_STR(SKYRIMOUTFITEQUIPMENTSYSTEMNG_VERSION_MAJOR) "." SKYRIMOUTFITEQUIPMENTSYSTEMNG_MAKE_STR(SKYRIMOUTFITEQUIPMENTSYSTEMNG_VERSION_MINOR) "." SKYRIMOUTFITEQUIPMENTSYSTEMNG_MAKE_STR(SKYRIMOUTFITEQUIPMENTSYSTEMNG_VERSION_PATCH) "." SKYRIMOUTFITEQUIPMENTSYSTEMNG_MAKE_STR(SKYRIMOUTFITEQUIPMENTSYSTEMNG_VERSION_BETA)
  
+diff --git a/src/ArmorAddonOverrideService.cpp b/src/ArmorAddonOverrideService.cpp
+index b6ae5f9..9dbae4b 100644
+--- a/src/ArmorAddonOverrideService.cpp
++++ b/src/ArmorAddonOverrideService.cpp
+@@ -31,11 +31,11 @@ Outfit::Outfit(const proto::Outfit& proto, const SKSE::SerializationInterface* i
+ bool Outfit::conflictsWith(RE::TESObjectARMO* test) const {
+     if (!test)
+         return false;
+-    const auto mask = static_cast<uint32_t>(test->GetSlotMask());
++    const auto mask = static_cast<uint32_t>(test->GetSlotMask().underlying());
+     for (auto it = m_armors.cbegin(); it != m_armors.cend(); ++it) {
+         RE::TESObjectARMO* armor = *it;
+         if (armor)
+-            if ((mask & static_cast<uint32_t>(armor->GetSlotMask()))
++            if ((mask & static_cast<uint32_t>(armor->GetSlotMask().underlying()))
+                 != static_cast<uint32_t>(RE::BGSBipedObjectForm::FirstPersonFlag::kNone))
+                 return true;
+     }
 diff --git a/src/Main.cpp b/src/Main.cpp
 index 70d8fb9..1684b0c 100644
 --- a/src/Main.cpp
@@ -63,11 +81,33 @@ index 70d8fb9..1684b0c 100644
          }
  
      } else if (message->type == SKSE::MessagingInterface::kPostPostLoad) {
+diff --git a/src/OutfitSystem.cpp b/src/OutfitSystem.cpp
+index 17c05ca..bac37c3 100644
+--- a/src/OutfitSystem.cpp
++++ b/src/OutfitSystem.cpp
+@@ -463,7 +463,7 @@ namespace OutfitSystem {
+                     std::uint32_t mask = 1 << (i - kBodySlotMin);
+                     for (auto it = armors.begin(); it != armors.end(); it++) {
+                         RE::TESObjectARMO* armor = *it;
+-                        if (armor && (static_cast<std::uint32_t>(armor->GetSlotMask()) & mask)) {
++                        if (armor && (static_cast<std::uint32_t>(armor->GetSlotMask().underlying()) & mask)) {
+                             data.bodySlots.push_back(i);
+                             data.armors.push_back(armor);
+                             {// name
+@@ -1127,7 +1127,7 @@ namespace OutfitSystem {
+                 RE::TESObjectARMO* existing = *it;
+                 if (existing) {
+                     const auto mask = existing->GetSlotMask();
+-                    if ((static_cast<uint32_t>(mask) & static_cast<uint32_t>(candidateMask))
++                    if ((static_cast<uint32_t>(mask.underlying()) & static_cast<uint32_t>(candidateMask.underlying()))
+                         != static_cast<uint32_t>(RE::BGSBipedObjectForm::FirstPersonFlag::kNone))
+                         conflicts.push_back(existing);
+                 }
 diff --git a/src/Utility.cpp b/src/Utility.cpp
-index 7e0231a..c68b9b0 100644
+index 7e0231a..2100b68 100644
 --- a/src/Utility.cpp
 +++ b/src/Utility.cpp
-@@ -195,6 +195,18 @@ bool Settings::AllowExternalEquipment() {
+@@ -195,13 +195,25 @@ bool Settings::AllowExternalEquipment() {
      return result.has_value() ? result.value() : SettingsDefaults::AllowExternalEquipment;
  }
  
@@ -84,8 +124,17 @@ index 7e0231a..c68b9b0 100644
 +}
 +
  void REUtilities::DebugNotification(const std::string& notification) {
-     RE::DebugNotification(notification.c_str());
+-    RE::DebugNotification(notification.c_str());
++    RE::SendHUDMessage::ShowHUDMessage(notification.c_str());
  }
+ 
+ void REUtilities::ExtraDebugNotification(const std::string& notification) {
+     if (Settings::ExtraLoggingEnabled()) {
+-        RE::DebugNotification(notification.c_str());
++        RE::SendHUDMessage::ShowHUDMessage(notification.c_str());
+     }
+ }
+ 
 diff --git a/vcpkg.json b/vcpkg.json
 index 5ed0f19..5a4159c 100644
 --- a/vcpkg.json

@@ -34,6 +34,10 @@ Skyrim 1.7.99 / 1.7.104 instead of failing with
 - The outfit editor lists all 32 body slots on one scrolling page; armor pickers ("add from
   inventory", "add any armor") label and group items by body slot, e.g. `[37] Elven Boots`.
 - New outfits start as favourites. The Outfits page comes first and opens by default.
+- Categories page: rename/move, merge and remove categories (outfits follow; name clashes get a
+  " (2)" suffix, nothing is deleted), plus "Sort uncategorised outfits by mod".
+- Outfits page: select mode to tick outfits across folders and move them together; imports can
+  go straight into a category (default: named after the mod).
 - Plugin version 0.1.5. No changes to the ESP.
 
 ## Install (MO2)
